@@ -1,3 +1,5 @@
+use color_eyre::eyre::WrapErr as _;
+use color_eyre::Section;
 use glob::glob;
 
 use std::fs::File;
@@ -14,11 +16,14 @@ pub use stylers_macro::style_str;
 
 macro_rules! p {
     ($($tokens: tt)*) => {
-        println!("cargo:warning={}", format!($($tokens)*))
+        println!("cargo::warning={}", format!($($tokens)*))
     }
 }
 
-pub fn build(output_path: Option<String>) {
+pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
+    // if called by itself, this will make error messages pretty :)
+    color_eyre::install().ok();
+
     let pattern = format!("{}/src/**/*.rs", current_dir().unwrap().to_str().unwrap());
     let mut output_css = String::from("");
     p!(
@@ -27,8 +32,19 @@ pub fn build(output_path: Option<String>) {
     );
     for file in glob(&pattern).unwrap() {
         let file = file.unwrap();
-        let content = fs::read_to_string(file).expect("Failed to read file");
-        let ast = syn::parse_file(&content).unwrap();
+        let content = fs::read_to_string(&file)
+            .wrap_err("Failed to read .rs file")
+            .note(format!("File path: {:?}", file))
+            .note("Skipping this file");
+        //
+        let content = match content {
+            Ok(content) => content,
+            Err(err) => {
+                println!("cargo::warning={}", err);
+                continue;
+            }
+        };
+        let ast = syn::parse_file(&content).wrap_err("Couldn't parse file as syn token stream")?;
 
         // check the each item in the *.rs file
         for item in ast.items {
@@ -82,6 +98,7 @@ pub fn build(output_path: Option<String>) {
         "{}",
         "===============================Stylers debug output end==============================="
     );
+    Ok(())
 }
 
 const OUTPUT_DIR: &str = "./target";
