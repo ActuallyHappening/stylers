@@ -4,7 +4,7 @@ mod style;
 mod style_sheet;
 
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::collections::hash_map::RandomState;
@@ -37,7 +37,7 @@ impl Class {
             }
         }
         let mut rng = ChaCha8Rng::seed_from_u64(no_of_chars);
-        let hash = rng.gen::<i32>();
+        let hash = rng.r#gen::<i32>();
         Self(format!("l-{}", &hash.to_string()[0..6]))
     }
 

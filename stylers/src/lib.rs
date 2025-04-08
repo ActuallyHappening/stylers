@@ -1,5 +1,6 @@
-use color_eyre::eyre::WrapErr as _;
+use camino::{Utf8Path, Utf8PathBuf};
 use color_eyre::Section;
+use color_eyre::eyre::{WrapErr as _, bail};
 use glob::glob;
 
 use std::fs::File;
@@ -8,23 +9,121 @@ use std::{borrow::Borrow, env::current_dir, fs};
 use stylers_core::Class;
 use stylers_core::{from_str, from_ts};
 use syn::{Expr, Item, Stmt};
+#[allow(unused_imports)]
+use tracing::{debug, error, info, trace, warn};
 
 pub use stylers_macro::style;
 pub use stylers_macro::style_sheet;
 pub use stylers_macro::style_sheet_str;
 pub use stylers_macro::style_str;
 
+#[cfg(feature = "build-script")]
 macro_rules! p {
     ($($tokens: tt)*) => {
         println!("cargo::warning={}", format!($($tokens)*))
     }
 }
+#[cfg(not(feature = "build-script"))]
+macro_rules! p {
+    ($($tokens: tt)*) => {};
+}
 
-pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
+pub struct BuildParams {
+    output_path: Utf8PathBuf,
+    search_dir: Utf8PathBuf,
+}
+
+impl BuildParams {
+    pub fn builder() -> BuildParamsBuilder {
+        BuildParamsBuilder::default()
+    }
+}
+
+#[derive(Default)]
+pub struct BuildParamsBuilder {
+    output_path: Option<Utf8PathBuf>,
+    search_dir: Option<Utf8PathBuf>,
+}
+
+impl BuildParamsBuilder {
+    /// File path to output collated .css to
+    pub fn with_output_path(self, path: Utf8PathBuf) -> color_eyre::Result<Self> {
+        if !path.is_file() {
+            // tries to create recursive dirs to path
+            let mut path2 = path.clone();
+            path2.pop();
+            match std::fs::create_dir_all(path2) {
+                Ok(_) => {}
+                Err(err) => {
+                    warn!(
+                        ?err,
+                        "Was trying to create output directory for the specified output path {:?}, but failed",
+                        path
+                    );
+                }
+            }
+            std::fs::File::create_new(&path)
+                .wrap_err(format!("Couldn't create output file at path {:?}", path))?;
+        }
+        Ok(Self {
+            output_path: Some(path),
+            search_dir: self.search_dir,
+        })
+    }
+
+    /// Directory path to search .rs files in
+    pub fn with_search_dir(self, path: Utf8PathBuf) -> color_eyre::Result<Self> {
+        if !path.is_dir() {
+            bail!(
+                "Search dir {:?} does not exist, or is not a directory path",
+                path
+            )
+        } else {
+            Ok(Self {
+                output_path: self.output_path,
+                search_dir: Some(path),
+            })
+        }
+    }
+
+    /// Will error if appropriate defaults were not provided,
+    /// or paths were not utf8 encoded
+    pub fn finish(mut self) -> color_eyre::Result<BuildParams> {
+        let output_path: Utf8PathBuf = match &self.output_path {
+            Some(output_path) => output_path.clone(),
+            None => {
+                let default = current_dir()?
+                    .join("target")
+                    .join("stylers_out.css")
+                    .try_into()?;
+                self = self
+                    .with_output_path(default)
+                    .wrap_err("Couldn't use default output path")?;
+                self.output_path.as_ref().unwrap().clone()
+            }
+        };
+        let search_dir: Utf8PathBuf = match self.search_dir {
+            Some(search_dir) => search_dir,
+            None => {
+                let default = current_dir()?.join("src").try_into()?;
+                self = self
+                    .with_search_dir(default)
+                    .wrap_err("Couldn't use default search dir")?;
+                self.search_dir.unwrap()
+            }
+        };
+        Ok(BuildParams {
+            output_path,
+            search_dir,
+        })
+    }
+}
+
+pub fn build(build_params: BuildParams) -> color_eyre::Result<()> {
     // if called by itself, this will make error messages pretty :)
     color_eyre::install().ok();
 
-    let pattern = format!("{}/src/**/*.rs", current_dir().unwrap().to_str().unwrap());
+    let pattern = format!("{}/**/*.rs", build_params.search_dir);
     let mut output_css = String::from("");
     p!(
         "{}",
@@ -38,9 +137,16 @@ pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
             .note("Skipping this file");
         //
         let content = match content {
-            Ok(content) => content,
+            Ok(content) => {
+                debug!(?file, "Processing file");
+                content
+            }
             Err(err) => {
                 println!("cargo::warning={}", err);
+                warn!(
+                    ?err,
+                    "Glob matched a file that can't be read for some reason?"
+                );
                 continue;
             }
         };
@@ -62,6 +168,7 @@ pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
                                     // p!("macro_name:{:?}", macro_name);
 
                                     if macro_name == *"style" {
+                                        trace!(?file, "Processing `style` macro in file");
                                         let ts = expr_mac.mac.tokens.clone();
                                         let class = Class::rand_class_from_seed(ts.to_string());
                                         let token_stream = ts.into_iter();
@@ -70,6 +177,7 @@ pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
                                     }
 
                                     if macro_name == *"style_sheet" {
+                                        trace!(?file, "Processing `style_sheet` macro in file");
                                         let ts = expr_mac.mac.tokens.clone();
                                         let file_path = ts.to_string();
                                         let file_path = file_path.trim_matches('"');
@@ -91,7 +199,7 @@ pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
         }
     }
 
-    write_css(output_path, &output_css)
+    write_css(&build_params.output_path, &output_css)
         .unwrap_or_else(|e| p!("Problem creating output file: {}", e.to_string()));
 
     p!(
@@ -101,16 +209,8 @@ pub fn build(output_path: Option<String>) -> color_eyre::Result<()> {
     Ok(())
 }
 
-const OUTPUT_DIR: &str = "./target";
 /// Writes the styles in its own file and appends itself to the main.css file
-fn write_css(output_path: Option<String>, content: &str) -> io::Result<()> {
-    let mut out_path = String::from("./target/stylers_out.css");
-    if let Some(path) = output_path {
-        out_path = path;
-    }
-
-    fs::create_dir_all(OUTPUT_DIR)?;
-
+fn write_css(out_path: &Utf8Path, content: &str) -> io::Result<()> {
     let mut buffer = File::create(out_path)?;
     buffer.write_all(content.as_bytes())?;
     buffer.flush()?;
