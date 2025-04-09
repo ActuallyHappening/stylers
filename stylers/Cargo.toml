@@ -15,7 +15,9 @@ readme = "../README.md"
 default = ["build", "build-script"]
 ## Exports the `build` function
 build = []
-## Assumes the `build` function is being called within a build script
+## Assumes the `build` function is being called within a build script.
+## Disable this is you are running this script elsewhere to avoid
+## random logs to stdout like `cargo::warning= stylers debug start`
 build-script = []
 
 [dependencies]
@@ -27,3 +29,5 @@ proc-macro2 = "1.0.60"
 color-eyre = "0.6.3"
 tracing = "0.1.41"
 camino = "1.1.9"
+tracing-subscriber = { version = "0.3.19", features = ["fmt"] }
+document-features = "0.2.11"

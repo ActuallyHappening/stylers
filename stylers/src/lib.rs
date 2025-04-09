@@ -1,3 +1,12 @@
+//! ## Feature flags
+#![doc = document_features::document_features!()]
+//!
+//! ## Usage
+//! An example build.rs
+//! ```rust
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/build.rs"))]
+//! ```
+
 pub use stylers_macro::style;
 pub use stylers_macro::style_sheet;
 pub use stylers_macro::style_sheet_str;
@@ -124,6 +133,8 @@ mod build {
         }
     }
 
+    /// Requires the `build` feature flag.
+    /// Will search your local fs and compile the css snippets you have included
     pub fn build(build_params: BuildParams) -> color_eyre::Result<()> {
         // if called by itself, this will make error messages pretty :)
         color_eyre::install().ok();
@@ -155,7 +166,9 @@ mod build {
                     println!("cargo::warning={}", err);
                     warn!(
                         ?err,
-                        "Glob matched a file that can't be read for some reason?"
+                        ?file,
+                        %pattern,
+                        "Glob pattern matched a file that can't be read for some reason?"
                     );
                     continue;
                 }
@@ -181,7 +194,7 @@ mod build {
                                         // p!("macro_name:{:?}", macro_name);
 
                                         if macro_name == *"style" {
-                                            trace!(?file, "Processing `style` macro in file");
+                                            debug!(?file, "Processing `style` macro in file");
                                             macros_couter += 1;
                                             let ts = expr_mac.mac.tokens.clone();
                                             let class = Class::rand_class_from_seed(ts.to_string());
@@ -189,10 +202,11 @@ mod build {
                                             let (scoped_css, _) =
                                                 from_ts(token_stream, &class, false);
                                             output_css += &scoped_css;
+                                            continue;
                                         }
 
                                         if macro_name == *"style_sheet" {
-                                            trace!(?file, "Processing `style_sheet` macro in file");
+                                            debug!(?file, "Processing `style_sheet` macro in file");
                                             macros_couter += 1;
                                             let ts = expr_mac.mac.tokens.clone();
                                             let file_path = ts.to_string();
@@ -205,6 +219,15 @@ mod build {
                                             );
                                             let style = from_str(&css_content, &class);
                                             output_css += &style;
+                                            continue;
+                                        }
+
+                                        if macro_name.contains("style") {
+                                            trace!(
+                                                ?macro_name,
+                                                note = "This macro was not a known `stylers` macro",
+                                                suggestion = "Use either `style` or `style_sheet`"
+                                            );
                                         }
                                     }
                                 }
