@@ -14,6 +14,7 @@ mod build {
 
     use std::fs::File;
     use std::io::{self, Write};
+    use std::num::Saturating;
     use std::{borrow::Borrow, env::current_dir, fs};
     use stylers_core::Class;
     use stylers_core::{from_str, from_ts};
@@ -128,6 +129,11 @@ mod build {
         color_eyre::install().ok();
 
         let pattern = format!("{}/**/*.rs", build_params.search_dir);
+
+        info!(search_pattern = %pattern, output_file = %build_params.output_path, "Building stylers css output");
+        let mut files_counter = Saturating(0u128);
+        let mut macros_couter = Saturating(0u32);
+
         let mut output_css = String::from("");
         p!(
             "{}",
@@ -157,6 +163,8 @@ mod build {
             let ast =
                 syn::parse_file(&content).wrap_err("Couldn't parse file as syn token stream")?;
 
+            files_counter += 1;
+
             // check the each item in the *.rs file
             for item in ast.items {
                 // check if the item is of type Function.
@@ -174,6 +182,7 @@ mod build {
 
                                         if macro_name == *"style" {
                                             trace!(?file, "Processing `style` macro in file");
+                                            macros_couter += 1;
                                             let ts = expr_mac.mac.tokens.clone();
                                             let class = Class::rand_class_from_seed(ts.to_string());
                                             let token_stream = ts.into_iter();
@@ -184,6 +193,7 @@ mod build {
 
                                         if macro_name == *"style_sheet" {
                                             trace!(?file, "Processing `style_sheet` macro in file");
+                                            macros_couter += 1;
                                             let ts = expr_mac.mac.tokens.clone();
                                             let file_path = ts.to_string();
                                             let file_path = file_path.trim_matches('"');
@@ -207,12 +217,13 @@ mod build {
         }
 
         write_css(&build_params.output_path, &output_css).wrap_err("Error writing output CSS")?;
-            // .unwrap_or_else(|e| p!("Problem creating output file: {}", e.to_string()));
+        // .unwrap_or_else(|e| p!("Problem creating output file: {}", e.to_string()));
 
         p!(
             "{}",
             "===============================Stylers debug output end==============================="
         );
+        info!(files_read = %files_counter, macros_processed = %macros_couter, "Finished processing stylers");
         Ok(())
     }
 
