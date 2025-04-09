@@ -9,11 +9,11 @@ mod utils;
 use proc_macro2::TokenTree;
 use std::collections::HashSet;
 
+use crate::Class;
 pub(crate) use crate::style::css_at_rule::AtRule;
 pub(crate) use crate::style::css_style_declar::StyleDeclaration;
 pub(crate) use crate::style::css_style_rule::StyleRule;
 pub(crate) use crate::style::css_style_sheet::{Rule, StyleSheet};
-use crate::Class;
 
 /// This function will build the whole style text as rust TokenStream.
 /// This function will take two arguments.
@@ -29,6 +29,8 @@ pub fn build_style_from_ts(
     let mut style = String::new();
 
     let (style_sheet, sel_map) = StyleSheet::new(token_stream, class, is_proc_macro);
+
+    tracing::trace!(?style_sheet, ?sel_map);
 
     style_sheet.rules.iter().for_each(|rule| match rule {
         Rule::AtRule(at_rule) => style.push_str(&at_rule.css_text()),
@@ -58,6 +60,9 @@ mod tests {
 
         let class = Class::new("test".into());
         let (style, _) = build_style_from_ts(input.into_iter(), &class, true);
-        assert_eq!(style,"div.test {border: 1px solid black;margin: 25px 50px 75px 100px;background-color: lightblue;}");
+        assert_eq!(
+            style,
+            "div.test {border: 1px solid black;margin: 25px 50px 75px 100px;background-color: lightblue;}"
+        );
     }
 }
