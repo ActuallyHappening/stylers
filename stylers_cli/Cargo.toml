@@ -16,4 +16,5 @@ stylers = { version = "1.0.0-alpha", path = "../stylers", default-features = fal
     "cli",
 ] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["fmt"] }
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
