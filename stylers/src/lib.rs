@@ -56,7 +56,10 @@ mod build {
     #[derive(Default, Clone)]
     #[cfg_attr(feature = "cli", derive(clap::Args))]
     pub struct BuildParamsBuilder {
+        /// File path to output collected .css
         output_path: Option<Utf8PathBuf>,
+        /// Directory to search for *.rs file using
+        /// the stylers::style! maco
         search_dir: Option<Utf8PathBuf>,
     }
 
