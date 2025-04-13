@@ -15,10 +15,13 @@ readme = "../README.md"
 default = ["build", "build-script"]
 ## Exports the `build` function
 build = []
+## Adds `clap` derive impls to the builder
+cli = ["dep:clap"]
 ## Assumes the `build` function is being called within a build script.
 ## Disable this is you are running this script elsewhere to avoid
 ## random logs to stdout like `cargo::warning= stylers debug start`
 build-script = []
+clap = ["dep:clap"]
 
 [dependencies]
 glob = "0.3.1"
@@ -31,3 +34,4 @@ tracing = "0.1.41"
 camino = "1.1.9"
 tracing-subscriber = { version = "0.3.19", features = ["fmt"] }
 document-features = "0.2.11"
+clap = { version = "4.5.36", features = ["derive"], optional = true }

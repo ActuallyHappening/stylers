@@ -53,7 +53,8 @@ mod build {
         }
     }
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
+    #[cfg_attr(feature = "cli", derive(clap::Args))]
     pub struct BuildParamsBuilder {
         output_path: Option<Utf8PathBuf>,
         search_dir: Option<Utf8PathBuf>,
